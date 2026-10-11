@@ -1,6 +1,6 @@
 # MeterScope
 
-Loudness, peak and RMS meter (VST3 + Standalone, Windows) by **TES Lab**. Its measurements are bit-exact with the
+Loudness, peak and RMS meter (VST3 + Standalone on Windows; VST3 + AU on macOS, test builds) by **TES Lab**. Its measurements are bit-exact with the
 Cockos "Loudness Meter Peak/RMS/LUFS" JSFX that ships with REAPER, and its instances are linked, with a combined
 view of every track in REAPER track order.
 
@@ -10,8 +10,9 @@ pistas.*
 
 ## Download
 
-Installers are on the [Releases](../../releases) page. The UI needs the Microsoft Edge WebView2 Runtime, which
-ships with Windows 11.
+- **Windows:** the installer is on the [Releases](../../releases) page. The UI needs the Microsoft Edge WebView2
+  Runtime, which ships with Windows 11.
+- **macOS** (test builds, universal): install with one Terminal command. See [README-macOS.md](README-macOS.md).
 
 ## Build from source
 

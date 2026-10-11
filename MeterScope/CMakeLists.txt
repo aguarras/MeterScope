@@ -44,13 +44,21 @@ cmake_minimum_required(VERSION 3.15)
 # folded from) and troubleshooting/patterns/juce8-critical-patterns.md
 # #9/#23. PLUGIN_CODE stays "Mesc" (already unique in this repo, chosen at
 # Stage 1) rather than the v7 snippet's placeholder "Mtsc".
+# macOS also builds an Audio Unit (Logic, GarageBand, REAPER's AU host).
+if(APPLE)
+    set(METERSCOPE_FORMATS VST3 AU Standalone)
+else()
+    set(METERSCOPE_FORMATS VST3 Standalone)
+endif()
+
 juce_add_plugin(MeterScope
     COMPANY_NAME "TES Lab"
     PLUGIN_MANUFACTURER_CODE Agus
     PLUGIN_CODE Mesc
-    FORMATS VST3 Standalone
+    BUNDLE_ID com.teslab.MeterScope
+    FORMATS ${METERSCOPE_FORMATS}
     PRODUCT_NAME "MeterScope"
-    VERSION 1.0.1
+    VERSION 1.1.0
     NEEDS_WEB_BROWSER TRUE
     NEEDS_WEBVIEW2 TRUE
 )

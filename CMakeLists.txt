@@ -3,7 +3,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
 cmake_minimum_required(VERSION 3.22)
-project(MeterScope VERSION 1.0.1 LANGUAGES C CXX)
+
+# macOS: oldest supported system. Universal builds pass
+# -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" (see .github/workflows/build-macos.yml).
+set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "Minimum macOS version")
+
+project(MeterScope VERSION 1.1.0 LANGUAGES C CXX)
 
 # JUCE 9.0.2 with patches/juce applied. Either point JUCE_PATH at a patched local
 # checkout, or leave it empty to download the tag and apply the patch here.

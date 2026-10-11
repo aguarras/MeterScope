@@ -4,6 +4,16 @@ All notable changes to MeterScope will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.1.0] - Unreleased
+
+### Added
+
+- **macOS build** (test): universal (Apple Silicon + Intel) VST3 and Audio Unit, macOS 10.15+. It is built
+  automatically by GitHub Actions (`.github/workflows/build-macos.yml`), signed ad-hoc (free, not notarized), and
+  checked with pluginval and auval.
+- `scripts/install-macos.sh`: a one-command install for macOS, with no administrator password. See
+  `README-macOS.md`.
+
 ## [1.0.1] - 2026-10-11
 
 ### Fixed

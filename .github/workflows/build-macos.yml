@@ -1,0 +1,94 @@
+# MeterScope - macOS build (universal VST3 + AU, ad-hoc signed)
+# Copyright (C) 2026 aguarras (TES Lab)
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Runs on every pushed version tag (v*), or by hand from the Actions tab.
+# On a tag it attaches MeterScope-macOS.zip to that tag's GitHub Release,
+# creating the release if needed: a pre-release for tags with a "-"
+# (v1.1.0-beta.1), otherwise a draft to finish by hand.
+#
+# Ad-hoc signing ("-") is free and needs no Apple account. It is enough for
+# Apple Silicon to load the plugin, but it is NOT notarized: a copy downloaded
+# with a web browser is quarantined by Gatekeeper. scripts/install-macos.sh
+# downloads with curl, which does not quarantine.
+
+name: Build macOS
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-14
+    timeout-minutes: 60
+    env:
+      ARTEFACTS: build/MeterScope/MeterScope_artefacts/Release
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure (universal arm64 + x86_64)
+        run: >
+          cmake -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+
+      - name: Build VST3 + AU
+        run: cmake --build build --config Release --target MeterScope_VST3 MeterScope_AU -j 4
+
+      - name: Ad-hoc sign and check
+        run: |
+          for b in "$ARTEFACTS/VST3/MeterScope.vst3" "$ARTEFACTS/AU/MeterScope.component"; do
+            codesign --force --deep --sign - "$b"
+            codesign --verify --deep --strict --verbose=2 "$b"
+          done
+          lipo -info "$ARTEFACTS/VST3/MeterScope.vst3/Contents/MacOS/MeterScope"
+
+      - name: Validate VST3 with pluginval
+        continue-on-error: true
+        run: |
+          curl -fsSL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip
+          unzip -q pluginval.zip
+          ./pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --validate-in-process \
+            --skip-gui-tests "$ARTEFACTS/VST3/MeterScope.vst3"
+
+      - name: Validate AU with auval
+        continue-on-error: true
+        run: |
+          mkdir -p ~/Library/Audio/Plug-Ins/Components
+          cp -R "$ARTEFACTS/AU/MeterScope.component" ~/Library/Audio/Plug-Ins/Components/
+          killall -9 AudioComponentRegistrar 2>/dev/null || true
+          sleep 5
+          auval -v aufx Mesc Agus
+
+      - name: Package
+        run: |
+          mkdir -p dist/MeterScope-macOS
+          cp -R "$ARTEFACTS/VST3/MeterScope.vst3" "$ARTEFACTS/AU/MeterScope.component" dist/MeterScope-macOS/
+          cp LICENSE COPYING COPYING.LESSER NOTICE.md README-macOS.md dist/MeterScope-macOS/
+          (cd dist && ditto -c -k --keepParent MeterScope-macOS MeterScope-macOS.zip)
+          shasum -a 256 dist/MeterScope-macOS.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MeterScope-macOS
+          path: dist/MeterScope-macOS.zip
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            case "$TAG" in
+              *-*) gh release create "$TAG" --prerelease --title "MeterScope ${TAG#v} (macOS test build)" \
+                     --notes "Untested macOS build (universal VST3 + AU, ad-hoc signed). Install: see README-macOS.md." ;;
+              *)   gh release create "$TAG" --draft --title "MeterScope ${TAG#v}" --notes "MeterScope ${TAG#v}" ;;
+            esac
+          fi
+          gh release upload "$TAG" dist/MeterScope-macOS.zip --clobber
