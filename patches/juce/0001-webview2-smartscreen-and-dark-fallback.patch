@@ -1,0 +1,35 @@
+diff --git a/modules/juce_gui_extra/native/juce_WebBrowserComponent_windows.cpp b/modules/juce_gui_extra/native/juce_WebBrowserComponent_windows.cpp
+index 9caca3066f..da42c2cd3a 100644
+--- a/modules/juce_gui_extra/native/juce_WebBrowserComponent_windows.cpp
++++ b/modules/juce_gui_extra/native/juce_WebBrowserComponent_windows.cpp
+@@ -491,7 +491,10 @@ public:
+ 
+     void fallbackPaint (Graphics& webBrowserComponentContext) override
+     {
+-        webBrowserComponentContext.fillAll (Colours::white);
++        // PFS patch: while WebView2 starts up, paint the configured
++        // WinWebView2 background colour (if one was set) instead of white.
++        const auto bgColour = preferences.getWinWebView2BackendOptions().getBackgroundColour();
++        webBrowserComponentContext.fillAll (bgColour.isTransparent() ? Colours::white : bgColour);
+ 
+         if (! hasBrowserBeenCreated())
+             checkWindowAssociation();
+@@ -1026,6 +1029,18 @@ private:
+             settings->put_IsStatusBarEnabled (! preferences.getWinWebView2BackendOptions().getIsStatusBarDisabled());
+             settings->put_IsBuiltInErrorPageEnabled (! preferences.getWinWebView2BackendOptions().getIsBuiltInErrorPageDisabled());
+ 
++            // PFS patch: skip the SmartScreen reputation check. It tries to resolve the
++            // non-existent juce.backend host and stalls the first navigation ~2 s on a DNS
++            // timeout. Embedded plugin UIs only load their own resources. Silently ignored
++            // on WebView2 runtimes older than ICoreWebView2Settings8.
++            {
++                ComSmartPtr<ICoreWebView2Settings8> settings8;
++                settings.QueryInterface (settings8);
++
++                if (settings8 != nullptr)
++                    settings8->put_IsReputationCheckingRequired (FALSE);
++            }
++
+             if (userAgent.isNotEmpty())
+             {
+                 ComSmartPtr<ICoreWebView2Settings2> settings2;
