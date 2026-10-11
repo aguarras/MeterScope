@@ -4,6 +4,20 @@ All notable changes to MeterScope will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.0.1] - 2026-10-11
+
+### Fixed
+
+- **Indicator flashing (accessibility):** when a level hovered around an indicator threshold, the whole bar used to
+  switch colour on every frame, flashing several times per second. That was distracting and a photosensitivity
+  risk.
+  - New default **Zone** style: only the part of the bar past the threshold (red) or inside the range (green) is
+    coloured. The rest keeps the measurement's own colour.
+  - **Whole bar** style is still available (Settings > Project > Indicator style). It is now stabilised: 0.5 dB
+    hysteresis, a 350 ms minimum per colour state (at most ~1.4 flashes per second; the WCAG 2.3.1 limit is 3) and
+    a 100 ms colour fade.
+  - Display only: measurements are unchanged, and a bar still turns red on the first frame past the threshold.
+
 ## [1.0.0] - 2026-10-11
 
 First release. VST3 + Standalone, Windows, vendor "TES Lab".

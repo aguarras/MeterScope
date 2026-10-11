@@ -3,7 +3,7 @@
 MeterScope — loudness, peak and RMS meter
 Copyright (C) 2026 aguarras (TES Lab)
 
-Source code: see `sourceUrl` in the release notes or installer. The exact source for every released binary is the
+Source code: https://github.com/aguarras/MeterScope. The exact source for every released binary is the
 matching tag (`vX.Y.Z`) in that repository.
 
 > This file summarises the licences. It is not legal advice.

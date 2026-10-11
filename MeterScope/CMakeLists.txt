@@ -50,6 +50,7 @@ juce_add_plugin(MeterScope
     PLUGIN_CODE Mesc
     FORMATS VST3 Standalone
     PRODUCT_NAME "MeterScope"
+    VERSION 1.0.1
     NEEDS_WEB_BROWSER TRUE
     NEEDS_WEBVIEW2 TRUE
 )

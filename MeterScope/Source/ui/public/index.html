@@ -240,11 +240,35 @@
     .bar-fill.family-rms  { background: var(--family-rms); }
     .bar-fill.family-lufs { background: var(--family-lufs); }
     .bar-fill.state-green { background: var(--ind-green); }
-    .bar-fill.state-red {
-        background-color: var(--ind-red);
+    .bar-fill.state-red { background-color: var(--ind-red); }
+    /* Indicator colour changes fade instead of snapping (photosensitivity;
+       see IND_MIN_HOLD_MS in app.js). The red hatch and top notch live on
+       pseudo-elements so they can fade with opacity too. */
+    .bar-fill { transition: background-color 100ms ease; }
+    .bar-fill::before, .bar-fill::after {
+        content: ''; position: absolute; left: 0; right: 0; pointer-events: none;
+        opacity: 0; transition: opacity 100ms ease;
+    }
+    .bar-fill::before {
+        top: 0; bottom: 0; border-radius: inherit;
         background-image: repeating-linear-gradient(45deg, var(--ind-red-hatch) 0 3px, transparent 3px 7px);
     }
-    .bar-fill.state-red::after {
+    .bar-fill::after {
+        top: 0; height: 3px;
+        background: var(--ind-red-notch); border-radius: var(--r-xs) var(--r-xs) 0 0;
+    }
+    .bar-fill.state-red::before, .bar-fill.state-red::after { opacity: 1; }
+    /* "Zone" indicator style (default): only the part of the bar past the
+       threshold / inside the range is coloured. */
+    .bar-zone { position: absolute; left: 1px; right: 1px; pointer-events: none; }
+    .bar-zone.zone-green { background: var(--ind-green); }
+    .bar-zone.zone-green.tops-fill { border-radius: var(--r-xs) var(--r-xs) 0 0; }
+    .bar-zone.zone-red {
+        background-color: var(--ind-red);
+        background-image: repeating-linear-gradient(45deg, var(--ind-red-hatch) 0 3px, transparent 3px 7px);
+        border-radius: var(--r-xs) var(--r-xs) 0 0;
+    }
+    .bar-zone.zone-red::after {
         content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
         background: var(--ind-red-notch); border-radius: var(--r-xs) var(--r-xs) 0 0;
     }
@@ -265,6 +289,7 @@
         color: var(--text-primary); width: 100%; white-space: nowrap;
         font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1;
     }
+    .current-value-slot { transition: color 100ms ease; }
     .current-value-slot.state-green { color: var(--ind-green-marker); }
     .current-value-slot.state-red { color: var(--ind-red); }
 

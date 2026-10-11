@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
 cmake_minimum_required(VERSION 3.22)
-project(MeterScope VERSION 1.0.0 LANGUAGES C CXX)
+project(MeterScope VERSION 1.0.1 LANGUAGES C CXX)
 
 # JUCE 9.0.2 with patches/juce applied. Either point JUCE_PATH at a patched local
 # checkout, or leave it empty to download the tag and apply the patch here.

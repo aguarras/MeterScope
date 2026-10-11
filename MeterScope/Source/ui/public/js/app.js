@@ -744,6 +744,88 @@ function evalIndicator(cfg, displayedValue) {
     return "normal";
 }
 
+/* Indicator colour stabilisation (display only; measurements are untouched).
+   A meter hovering around a threshold used to swap the whole bar's colour on
+   every frame, which is distracting and a photosensitivity risk (WCAG 2.3.1:
+   at most 3 flashes per second). Two rules keep the shown state calm:
+   - hysteresis: a bar leaves red/green only once the value is
+     IND_HYSTERESIS_DB past the edge it crossed on the way in;
+   - minimum hold: a shown state lasts at least IND_MIN_HOLD_MS, so a bar
+     changes colour at most ~3 times per second (~1.4 flashes/s, under half
+     the WCAG limit). Keep it >= 250 ms.
+   The colour change itself fades over 100 ms in CSS (.bar-fill). */
+var IND_HYSTERESIS_DB = 0.5;
+var IND_MIN_HOLD_MS = 350;
+
+/* How an active indicator colours the bar (Settings > Project):
+   "zone" (default) - only the part of the bar past the threshold / inside the
+            range is coloured (red above the threshold or range max, green
+            inside the range); the rest keeps the measurement's own colour;
+   "bar"  - the whole bar changes colour (stabilised, see above).
+   A per-machine viewing preference (localStorage), not a project setting. */
+var INDICATOR_STYLE = (function () {
+    try { return localStorage.getItem("meterscope.indicatorStyle") === "bar" ? "bar" : "zone"; }
+    catch (e) { return "zone"; }
+})();
+
+function setIndicatorStyle(style) {
+    INDICATOR_STYLE = style;
+    try { localStorage.setItem("meterscope.indicatorStyle", style); } catch (e) {}
+}
+
+function setBarZone(zone, loFrac, hiFrac) {
+    var h = Math.max(0, hiFrac - loFrac);
+    zone.style.display = h > 0 ? "" : "none";
+    zone.style.bottom = (loFrac * 100) + "%";
+    zone.style.height = (h * 100) + "%";
+}
+
+// "zone" style: colours [edge, current level] of the bar. cfg null hides both.
+function updateIndicatorZones(zoneGreen, zoneRed, cfg, fillFrac, yScale) {
+    if (!cfg || cfg.mode === "off") {
+        setBarZone(zoneGreen, 0, 0);
+        setBarZone(zoneRed, 0, 0);
+        return;
+    }
+    if (cfg.mode === "threshold") {
+        setBarZone(zoneGreen, 0, 0);
+        setBarZone(zoneRed, heightFrac(cfg.threshold, yScale), fillFrac);
+        return;
+    }
+    var lo = heightFrac(cfg.min, yScale), hi = heightFrac(cfg.max, yScale);
+    setBarZone(zoneGreen, lo, Math.min(fillFrac, hi));
+    zoneGreen.classList.toggle("tops-fill", fillFrac <= hi);
+    setBarZone(zoneRed, hi, fillFrac);
+}
+
+function evalIndicatorWithHysteresis(cfg, displayedValue, shownState) {
+    var raw = evalIndicator(cfg, displayedValue);
+    if (raw === shownState || !cfg || cfg.mode === "off") return raw;
+    var h = IND_HYSTERESIS_DB;
+    if (shownState === "red") {
+        var edge = cfg.mode === "threshold" ? cfg.threshold : cfg.max;
+        if (displayedValue > edge - h) return "red";
+    } else if (shownState === "green" && cfg.mode === "range" && raw === "normal") {
+        if (displayedValue >= cfg.min - h) return "green";
+    }
+    return raw;
+}
+
+function makeIndicatorStabilizer(initialState) {
+    var shown = initialState || "normal";
+    var since = -Infinity; // the first change is never delayed
+    return function (info) {
+        if (!info.cfg) return info.state;
+        var target = evalIndicatorWithHysteresis(info.cfg, info.value, shown);
+        var now = performance.now();
+        if (target !== shown && now - since >= IND_MIN_HOLD_MS) {
+            shown = target;
+            since = now;
+        }
+        return shown;
+    };
+}
+
 /* monoDb() applies the JSFX-semantics -3dB SHOWN-value compensation
    (parameter-spec.md "monoMode") to loudness/RMS measurements only -- never
    Peak/True Peak, whose mono behaviour is channel-selection only. All
@@ -926,6 +1008,7 @@ function buildStack(opts) {
     track.appendChild(zonesWrap);
 
     var fill = null, capLo = null, capHi = null, lraBar = null, histWrap = null, lastHistArr = null;
+    var zoneGreen = null, zoneRed = null;
     if (opts.lra) {
         var loFrac = heightFrac(opts.lra.lo, opts.yScale);
         var hiFrac = heightFrac(opts.lra.hi, opts.yScale);
@@ -941,6 +1024,15 @@ function buildStack(opts) {
         if (opts.barColorState === "red") fill.classList.add("state-red");
         fill.style.height = (opts.fillFrac * 100) + "%";
         track.appendChild(fill);
+
+        if (opts.cfg) {
+            zoneGreen = el("div", "bar-zone zone-green");
+            zoneRed = el("div", "bar-zone zone-red");
+            setBarZone(zoneGreen, 0, 0);
+            setBarZone(zoneRed, 0, 0);
+            track.appendChild(zoneGreen);
+            track.appendChild(zoneRed);
+        }
 
         if (opts.histogram) {
             histWrap = el("div", "hist-wrap");
@@ -965,9 +1057,11 @@ function buildStack(opts) {
 
     if (opts.updaters && opts.dynamic) {
         var d = opts.dynamic;
+        var stableState = makeIndicatorStabilizer(opts.curColorState);
         opts.updaters.push(function () {
+            var fillFrac = fill ? d.getFillFrac() : 0;
             if (fill) {
-                fill.style.height = (d.getFillFrac() * 100) + "%";
+                fill.style.height = (fillFrac * 100) + "%";
             }
             if (capLo) {
                 var lohi = d.getLoHi();
@@ -978,12 +1072,15 @@ function buildStack(opts) {
                 lraBar.style.height = ((hiF - loF) * 100) + "%";
             }
             var curInfo = d.getCur();
+            var shownState = stableState(curInfo);
             curChip.textContent = curInfo.text;
-            cur.classList.toggle("state-green", curInfo.state === "green");
-            cur.classList.toggle("state-red", curInfo.state === "red");
+            cur.classList.toggle("state-green", shownState === "green");
+            cur.classList.toggle("state-red", shownState === "red");
             if (fill) {
-                fill.classList.toggle("state-green", curInfo.state === "green");
-                fill.classList.toggle("state-red", curInfo.state === "red");
+                var zoneStyle = INDICATOR_STYLE === "zone" && !!curInfo.cfg;
+                fill.classList.toggle("state-green", !zoneStyle && shownState === "green");
+                fill.classList.toggle("state-red", !zoneStyle && shownState === "red");
+                if (zoneGreen) updateIndicatorZones(zoneGreen, zoneRed, zoneStyle ? curInfo.cfg : null, fillFrac, opts.yScale);
             }
             if (heldChip && d.getHeld) {
                 var heldInfo = d.getHeld();
@@ -1135,7 +1232,7 @@ function renderMeterCluster(containerEl, trackId, config, indicators, live, mono
                 updaters: updaters,
                 dynamic: {
                     getFillFrac: function () { return heightFrac(curDb(), yScale); },
-                    getCur: function () { var c = curDb(); return { text: isClip ? fmtClip(clips()) : fmtDb(c), state: evalIndicator(cfg, c) }; },
+                    getCur: function () { var c = curDb(); return { text: isClip ? fmtClip(clips()) : fmtDb(c), state: evalIndicator(cfg, c), cfg: cfg, value: c }; },
                     getHeld: function () { var h = heldDb(); return { text: fmtDb(h), state: evalIndicator(cfg, h), warn: isHeldWarn(h) }; }
                 }
             });
@@ -1160,7 +1257,7 @@ function renderMeterCluster(containerEl, trackId, config, indicators, live, mono
             updaters: updaters,
             dynamic: {
                 getFillFrac: function () { return heightFrac(monoDb(live.dispRmsM, mono), yScale); },
-                getCur: function () { var v = monoDb(live.dispRmsM, mono); return { text: fmtDb(v), state: evalIndicator(indicators.RmsM, v) }; },
+                getCur: function () { var v = monoDb(live.dispRmsM, mono); return { text: fmtDb(v), state: evalIndicator(indicators.RmsM, v), cfg: indicators.RmsM, value: v }; },
                 getHeld: function () { var v = monoDb(live.rmsMHeld, mono); return { text: fmtDb(v), state: evalIndicator(indicators.RmsM, v), warn: isHeldWarn(v) }; }
             }
         })] });
@@ -1178,7 +1275,7 @@ function renderMeterCluster(containerEl, trackId, config, indicators, live, mono
             updaters: updaters,
             dynamic: {
                 getFillFrac: function () { return heightFrac(monoDb(live.dispRmsI, mono), yScale); },
-                getCur: function () { var v = monoDb(live.dispRmsI, mono); return { text: fmtDb(v), state: evalIndicator(indicators.RmsI, v) }; }
+                getCur: function () { var v = monoDb(live.dispRmsI, mono); return { text: fmtDb(v), state: evalIndicator(indicators.RmsI, v), cfg: indicators.RmsI, value: v }; }
             }
         })] });
     }
@@ -1201,7 +1298,7 @@ function renderMeterCluster(containerEl, trackId, config, indicators, live, mono
             updaters: updaters,
             dynamic: {
                 getFillFrac: function () { return heightFrac(monoDb(live.dispLufsM, mono), yScale); },
-                getCur: function () { var v = monoDb(live.dispLufsM, mono); return { text: fmtDb(v), state: evalIndicator(indicators.LufsM, v) }; },
+                getCur: function () { var v = monoDb(live.dispLufsM, mono); return { text: fmtDb(v), state: evalIndicator(indicators.LufsM, v), cfg: indicators.LufsM, value: v }; },
                 getHeld: function () { var v = monoDb(live.lufsMHeld, mono); return { text: fmtDb(v), state: evalIndicator(indicators.LufsM, v), warn: isHeldWarn(v) }; },
                 getHistogram: hasHist ? function () { return live.lufsMHist; } : null
             }
@@ -1223,7 +1320,7 @@ function renderMeterCluster(containerEl, trackId, config, indicators, live, mono
             updaters: updaters,
             dynamic: {
                 getFillFrac: function () { return heightFrac(monoDb(live.dispLufsS, mono), yScale); },
-                getCur: function () { var v = monoDb(live.dispLufsS, mono); return { text: fmtDb(v), state: evalIndicator(indicators.LufsS, v) }; },
+                getCur: function () { var v = monoDb(live.dispLufsS, mono); return { text: fmtDb(v), state: evalIndicator(indicators.LufsS, v), cfg: indicators.LufsS, value: v }; },
                 getHeld: function () { var v = monoDb(live.lufsSHeld, mono); return { text: fmtDb(v), state: evalIndicator(indicators.LufsS, v), warn: isHeldWarn(v) }; }
             }
         })] });
@@ -1255,7 +1352,7 @@ function renderMeterCluster(containerEl, trackId, config, indicators, live, mono
             updaters: updaters,
             dynamic: {
                 getFillFrac: function () { return heightFrac(monoDb(live.dispLufsI, mono), yScale); },
-                getCur: function () { var v = monoDb(live.dispLufsI, mono); return { text: fmtDb(v), state: evalIndicator(indicators.LufsI, v) }; }
+                getCur: function () { var v = monoDb(live.dispLufsI, mono); return { text: fmtDb(v), state: evalIndicator(indicators.LufsI, v), cfg: indicators.LufsI, value: v }; }
             }
         })] });
     }
@@ -1979,6 +2076,14 @@ function buildGearBody() {
     sP.appendChild(toggleRow("Reset on playback start", function () { return PROJECT.resetOnPlay; }, function (v) {
         PROJECT.resetOnPlay = v; logParam("resetOnPlay", v);
     }));
+
+    // Indicator colouring style, see INDICATOR_STYLE.
+    var styleRow = el("div", "toggle-row");
+    var styleLabel = document.createElement("div"); styleLabel.textContent = "Indicator style";
+    styleRow.appendChild(styleLabel);
+    styleRow.appendChild(segmented([["zone", "Zone"], ["bar", "Whole bar"]],
+        function () { return INDICATOR_STYLE; }, function (v) { setIndicatorStyle(v); logParam("indicatorStyle", v); }));
+    sP.appendChild(styleRow);
 
     var sliderRow = el("div", "slider-row");
     var sLabel = el("div"); sLabel.style.fontSize = "10px"; sLabel.style.width = "50px"; sLabel.textContent = "Y-scale";
